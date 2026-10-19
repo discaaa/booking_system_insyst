@@ -578,8 +578,8 @@ button {
   border-radius: 20px;
 }
 
-.verify-details {
-  align-self: center;
+.details-form button {
+  
 }
 
 .details-form h3, .details-form p {

@@ -26,6 +26,11 @@ function App() {
   });
 
   const [detailsVerified, setDetailsVerified] = useState(false);
+  const [guest, setGuests] = useState(1);
+  const [createdBooking, setCreatedBooking] = useState(null);
+
+  const [bookingLoading, setBookingLoading] = useState(false);
+  const [bookingError, setBookingError] = useState("");
 
   useEffect(() => {
     async function fetchRooms() {
@@ -49,7 +54,13 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (!selectedRoom) return;
+    if (!selectedRoom || !selectedDate){
+      setSlots([]);
+      setSelectedSlot(null);
+      setSlotLoading(false);
+      setSlotError("");
+      return
+    }
 
     async function fetchSlots() {
       setSlotLoading(true);
@@ -57,13 +68,31 @@ function App() {
       setSelectedSlot(null);
 
       try {
-        const response = await fetch(`http://localhost:3001/slots?roomId=${selectedRoom.id}`);
+        const slotsResponse = await fetch(`http://localhost:3001/slots?roomId=${selectedRoom.id}`);
 
-        if (!response.ok){
+        if (!slotsResponse.ok){
           throw new Error("Failed to fetch time slots.");
         }
-        const data = await response.json();
-        setSlots(data);
+
+        const slotsData = await slotsResponse.json();
+        
+        const bookingResponse = await fetch(`http://localhost:3001/bookings?roomId=${selectedRoom.id}&date=${selectedDate}`)
+        if(!bookingResponse.ok){
+          throw new Error("Failed to fetch bookings")
+        }
+        
+        const bookingsData = await bookingResponse.json();
+
+        const updatedSlots = slotsData.map((slot) => {
+          const isBooked = bookingsData.some(
+            (booking) => 
+              Number(booking.roomId) === Number(selectedRoom.id) &&
+              Number(booking.slotId) === Number(slot.id) &&
+              booking.date === selectedDate
+          )
+          return{...slot, isAvailable: slot.isAvailable && !isBooked}
+        })
+        setSlots(updatedSlots);
       } 
       catch (error) {
         console.error(error);
@@ -75,18 +104,87 @@ function App() {
       }
     }
     fetchSlots();
-  }, [selectedRoom]);
+  }, [selectedRoom, selectedDate]);
 
   function verifyDetails(){
     const {fullName, email, phone, purpose} = customerDetails;
+    const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const phoneDigits = phone.replace(/[\s()+-]/g, "");
 
     if(!fullName.trim() || !email.trim() || !phone.trim() || !purpose.trim()){
       setDetailsVerified(false);
       alert("Please fill all required fields.");
-      return;
+      return false;
+    }
+
+    if(!emailPattern.test(email.trim())){
+      setDetailsVerified(false);
+      alert("Please enter a valid email address.");
+      return false;
+    }
+
+    if(!/^\d{10,15}$/.test(phoneDigits)){
+      setDetailsVerified(false);
+      alert("Enter a valid phone number with 10-15 digits.")
+      return false;
+    }
+
+    if(!selectedRoom || Number(guest) < 1 || Number(guest) > Number(selectedRoom.capacity)){
+      setDetailsVerified(false);
+      alert(`Guests must be between 1 and ${selectedRoom?.capacity ?? 0}.`);
+      return false;
     }
 
     setDetailsVerified(true);
+    return true;
+  }
+
+  async function createBooking() {
+    const isValid = verifyDetails()
+
+    if(!isValid){
+      return
+    }
+
+    if(!selectedRoom || !selectedDate || !selectedSlot){
+      alert("Plese select a room, date, and time slot.")
+      return;
+    }
+    setBookingLoading(true);
+    setBookingError("");
+
+    try {
+      const response = await fetch("http://localhost:3001/bookings", {
+        method: "POST", headers: {"Content-Type" : "application/json"},
+        body: JSON.stringify({
+          roomId: Number(selectedRoom.id),
+          slotId: Number(selectedSlot.id),
+          date: selectedDate,
+          name: customerDetails.fullName.trim(),
+          email: customerDetails.email.trim(),
+          phone: customerDetails.phone.trim(),
+          participants: Number(guest),
+          purpose: customerDetails.purpose.trim(),
+          notes: customerDetails.notes.trim()
+        })
+      })
+
+      if(!response.ok){
+        setBookingError("Booking failed. Try again.")
+        return;
+      }
+
+      const booking = await response.json();
+      setCreatedBooking(booking);
+      setCurrentStep(5);
+    }
+    catch (error){
+      console.log("Booking error: ", error)
+      setBookingError("Can't connect to the booking API.")
+    }
+    finally{
+      setBookingLoading(false);
+    }
   }
 
   return (
@@ -132,14 +230,6 @@ function App() {
               <div className="room-heading">
                 <h2>Find your space</h2>
                 <p>Choose a room for your meeting.</p>
-                <div className="find-bar">
-                  <div className="search-room">
-                    Search
-                  </div>
-                  <div className="filter-room">
-                    Filter
-                  </div>
-                </div>
               </div>
 
               <div className="rooms-avail">
@@ -147,7 +237,7 @@ function App() {
                 {loading ? (<p>Loading rooms...</p>) : error ? (<p>{error}</p>) : rooms.length === 0 ? (<p>No rooms available.</p>) : (
                   <div className="room-cards">
                     {rooms.map((room) => (
-                      <div key={room.id} className={`room-x ${selectedRoom?.id === room.id ? "selected" : ""}`} onClick={() => setSelectedRoom(room)}>
+                      <div key={room.id} className={`room-x ${selectedRoom?.id === room.id ? "selected" : ""}`} onClick={() => {setSelectedRoom(room); setSelectedDate(""); setSelectedSlot(null); setSlots([])}}>
                         <img src={room.image} alt={room.name} />
                         <div className="room-info">
                           <h3>{room.name}</h3>
@@ -176,7 +266,7 @@ function App() {
                     <input type="date" 
                     value={selectedDate}
                     min={new Date().toLocaleDateString("en-CA")}
-                    onChange={(e) => setSelectedDate(e.target.value)}/>
+                    onChange={(e) => {setSelectedDate(e.target.value); setSelectedSlot(null)}}/>
                   </div>
                   <div className="slots">
                     <div className="time-slots">
@@ -228,37 +318,43 @@ function App() {
                 </div> 
 
                 <div className="details-layout">
-                  <form className="details-form" onSubmit={(e) => {e.preventDefault(); setCurrentStep(4)}}>
+                  <form className="details-form" onSubmit={(e) => {e.preventDefault(); verifyDetails()}}>
                     <h3>Contact Information</h3>
                     <p className="form-hint">* Required Fields</p>
                     <div className="form-group">
                       <label htmlFor="fullName">Full Name *</label>
-                      <input type="text" id="fullName" placeholder="Enter your full name" value={customerDetails.fullName} onChange={(e) => setCustomerDetails({...customerDetails, fullName: e.target.value})} required />
+                      <input type="text" id="fullName" placeholder="Enter your full name" value={customerDetails.fullName} onChange={(e) => {setCustomerDetails({...customerDetails, fullName: e.target.value}); setDetailsVerified(false)}} required />
                     </div>
 
                     <div className="form-group">
                       <label htmlFor="email">Email Address *</label>
-                      <input type="email" id="email" placeholder="abc@gmail.com" value={customerDetails.email} onChange={(e) => setCustomerDetails({...customerDetails, email: e.target.value})} required/>
+                      <input type="email" id="email" placeholder="abc@gmail.com" value={customerDetails.email} onChange={(e) => {setCustomerDetails({...customerDetails, email: e.target.value}); setDetailsVerified(false)}} required/>
                     </div>
 
                     <div className="form-group">
                       <label htmlFor="phone">Phone Number *</label>
-                      <input type="tel" id="phone" placeholder="Enter your phone number" value={customerDetails.phone} onChange={(e) => setCustomerDetails({...customerDetails, phone: e.target.value})} required/>
+                      <input type="tel" id="phone" placeholder="Enter your phone number" value={customerDetails.phone} onChange={(e) => {setCustomerDetails({...customerDetails, phone: e.target.value}); setDetailsVerified(false)}} required/>
+                    </div>
+
+                    <div className="form-group">
+                      <label htmlFor="guest">Number of Guest *</label>
+                      <input type="number" id="guest" min="1" max={selectedRoom?.capacity || 1} value={guest} onChange={(e) => {setGuests(e.target.value); setDetailsVerified(false)}} required />
                     </div>
 
                     <div className="form-group">
                       <label htmlFor="purpose">Purpose of Booking *</label>
-                      <input type="text" id="purpose" placeholder="e.g. Team meeting, project discussion" value={customerDetails.purpose} onChange={(e) => setCustomerDetails({...customerDetails, purpose: e.target.value})} required/>
+                      <input type="text" id="purpose" placeholder="e.g. Team meeting, project discussion" value={customerDetails.purpose} onChange={(e) => {setCustomerDetails({...customerDetails, purpose: e.target.value}); setDetailsVerified(false)}} required/>
                     </div>
 
                     <div className="form-group">
                       <label htmlFor="notes">Additional Notes</label>
                       <input type="text" id="notes" placeholder="Any special requests ?" value={customerDetails.notes} onChange={(e) => setCustomerDetails({...customerDetails, notes: e.target.value})}/>
                     </div>
+
+                    <button type="submit" className={`verify-details ${detailsVerified ? "verified" : ""}`}>
+                      {detailsVerified ? "Verified" : "Verify Details"}
+                    </button>
                   </form>
-                  <button type="submit" className={`verify-details ${detailsVerified ? "verified" : ""}`} onClick={verifyDetails}>
-                    {detailsVerified ? "Verified" : "Verify Details"}
-                  </button>
                 </div>               
               </div>
             )}
@@ -300,12 +396,17 @@ function App() {
                 </div>
                 <h2>Booking Confirmed !</h2>
                 <p className="confirmation-message">Your room has been successfully booked.</p>
-                
+                <p>Booking Code : <strong>#{createdBooking?.id}</strong></p>
                 <div className="confirmation-card">
                   <h3>Booking Summary</h3>
                   <div className="confirmation-detail">
                     <span>Room</span>
                     <strong>{selectedRoom?.name}</strong>
+                  </div>
+
+                  <div className="confirmation-detail">
+                    <span>Guest</span>
+                    <strong>{guest}</strong>
                   </div>
 
                   <div className="confirmation-detail">
@@ -329,16 +430,27 @@ function App() {
 
           {currentStep < 5 && (
             <div className="booking-actions">
+              {bookingError && (
+                <p className="error-message">{bookingError}</p>
+              )}
               {currentStep > 1 && (
                 <button className="back-button" onClick={() => setCurrentStep(currentStep - 1)}>Back</button>
               )}
               <button 
               className="next-button" 
               disabled={
+                bookingLoading ||
                 (currentStep === 1 && !selectedRoom) || 
                 (currentStep === 2 && (!selectedDate || !selectedSlot)) || 
                 (currentStep === 3 && !detailsVerified)}
-              onClick={() => setCurrentStep(currentStep + 1)}>Next</button>
+              onClick={() => {
+                if(currentStep === 4) {
+                  createBooking()
+                }
+                else{
+                  setCurrentStep(currentStep + 1)
+                }}}
+              >{currentStep === 4 ? "Confirm Booking" : "Next"}</button>
             </div>
           )}
 
