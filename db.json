@@ -1,0 +1,47 @@
+{
+  "rooms": [
+    {
+      "id": 1,
+      "name": "Focus Room",
+      "capacity": 4,
+      "pricePerHour": 100000,
+      "facilities": ["Wi-Fi", "Whiteboard", "TV"],
+      "image": "https://images.unsplash.com/photo-1497366754035-f200968a6e72?auto=format&fit=crop&w=900&q=80"
+    },
+    {
+      "id": 2,
+      "name": "Creative Space",
+      "capacity": 8,
+      "pricePerHour": 175000,
+      "facilities": ["Wi-Fi", "Projector", "Whiteboard", "Video Conference"],
+      "image": "https://images.unsplash.com/photo-1497366811353-6870744d04b2?auto=format&fit=crop&w=900&q=80"
+    },
+    {
+      "id": 3,
+      "name": "Executive Room",
+      "capacity": 12,
+      "pricePerHour": 250000,
+      "facilities": ["Wi-Fi", "Projector", "Smart TV", "Video Conference"],
+      "image": "https://images.unsplash.com/photo-1497366216548-37526070297c?auto=format&fit=crop&w=900&q=80"
+    }
+  ],
+
+  "slots": [
+    { "id": 1, "roomId": 1, "time": "09:00 - 10:00", "isAvailable": true },
+    { "id": 2, "roomId": 1, "time": "10:00 - 11:00", "isAvailable": true },
+    { "id": 3, "roomId": 1, "time": "11:00 - 12:00", "isAvailable": false },
+    { "id": 4, "roomId": 1, "time": "13:00 - 14:00", "isAvailable": true },
+
+    { "id": 5, "roomId": 2, "time": "09:00 - 10:00", "isAvailable": true },
+    { "id": 6, "roomId": 2, "time": "10:00 - 11:00", "isAvailable": true },
+    { "id": 7, "roomId": 2, "time": "11:00 - 12:00", "isAvailable": true },
+    { "id": 8, "roomId": 2, "time": "13:00 - 14:00", "isAvailable": false },
+
+    { "id": 9, "roomId": 3, "time": "09:00 - 10:00", "isAvailable": true },
+    { "id": 10, "roomId": 3, "time": "10:00 - 11:00", "isAvailable": true },
+    { "id": 11, "roomId": 3, "time": "11:00 - 12:00", "isAvailable": true },
+    { "id": 12, "roomId": 3, "time": "13:00 - 14:00", "isAvailable": true }
+  ],
+  
+  "bookings": []
+}
